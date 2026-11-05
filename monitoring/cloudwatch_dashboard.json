@@ -1,0 +1,72 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 8, "height": 6,
+      "properties": {
+        "title": "Pipeline Success Rate (7 days)",
+        "view": "singleValue",
+        "region": "us-east-1",
+        "period": 604800,
+        "stat": "Average",
+        "metrics": [
+          ["EcommerceDataPlatform/dev", "PipelineRunSuccess"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8, "y": 0, "width": 16, "height": 6,
+      "properties": {
+        "title": "Rows Processed per Run",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "us-east-1",
+        "period": 3600,
+        "stat": "Sum",
+        "metrics": [
+          ["EcommerceDataPlatform/dev", "RowsExtracted"],
+          ["EcommerceDataPlatform/dev", "RowsTransformed"],
+          ["EcommerceDataPlatform/dev", "RowsLoaded"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 6, "width": 12, "height": 6,
+      "properties": {
+        "title": "Data Freshness Lag (minutes)",
+        "view": "timeSeries",
+        "region": "us-east-1",
+        "period": 3600,
+        "stat": "Maximum",
+        "metrics": [
+          ["EcommerceDataPlatform/dev", "DataFreshnessLagMinutes"]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 6, "width": 12, "height": 6,
+      "properties": {
+        "title": "Quarantine Rate (%)",
+        "view": "timeSeries",
+        "region": "us-east-1",
+        "period": 3600,
+        "stat": "Sum",
+        "metrics": [
+          ["EcommerceDataPlatform/dev", "RowsQuarantined", { "id": "m1", "visible": false }],
+          ["EcommerceDataPlatform/dev", "RowsLoaded", { "id": "m2", "visible": false }],
+          [{ "expression": "m1 / (m2 + m1) * 100", "label": "Quarantine Rate (%)", "id": "e1" }]
+        ]
+      }
+    },
+    {
+      "type": "text",
+      "x": 0, "y": 12, "width": 24, "height": 4,
+      "properties": {
+        "markdown": "## Airflow Task Duration\nNot sourced from CloudWatch. Airflow emits its own metrics through statsd, which a Prometheus/StatsD exporter scrapes. See monitoring/README.md."
+      }
+    }
+  ]
+}

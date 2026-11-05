@@ -1,0 +1,289 @@
+# ============================================
+# DOCKER COMPOSE CONFIGURATION
+# E-Commerce Data Platform
+# ============================================
+
+volumes:
+  postgres_data:
+    name: ecommerce_postgres_data
+  mysql_data:
+    name: ecommerce_mysql_data
+
+networks:
+  ecommerce_network:
+    name: ecommerce_network
+    driver: bridge
+
+services:
+  # ==========================================
+  # POSTGRESQL - Data Warehouse
+  # ==========================================
+  postgres:
+    image: postgres:15
+    container_name: ecommerce_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_warehouse}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/postgres:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # MYSQL - Staging Database
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: ecommerce_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?err}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ecommerce_staging}
+      MYSQL_USER: ${MYSQL_USER:-app_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?err}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations/mysql:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # SPARK MASTER
+  # ==========================================
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: ecommerce_spark_master
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8081:8080"
+      - "7077:7077"
+    volumes:
+      - ./data:/opt/spark/data
+      - ./src/transform:/opt/spark/jobs
+    networks:
+      - ecommerce_network
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+
+  # ==========================================
+  # SPARK WORKER 1
+  # ==========================================
+  spark-worker-1:
+    image: apache/spark:3.5.0
+    container_name: ecommerce_spark_worker_1
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+    ports:
+      - "8082:8081"
+    volumes:
+      - ./data:/opt/spark/data
+      - ./src/transform:/opt/spark/jobs
+    networks:
+      - ecommerce_network
+    depends_on:
+      - spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+
+  # ==========================================
+  # SPARK WORKER 2
+  # ==========================================
+  spark-worker-2:
+    image: apache/spark:3.5.0
+    container_name: ecommerce_spark_worker_2
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+    ports:
+      - "8083:8081"
+    volumes:
+      - ./data:/opt/spark/data
+      - ./src/transform:/opt/spark/jobs
+    networks:
+      - ecommerce_network
+    depends_on:
+      - spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+
+  # ==========================================
+  # PIPELINE - Custom Python environment
+  # ==========================================
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecommerce_pipeline
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?err}
+      - POSTGRES_DB=${POSTGRES_DB:-ecommerce_warehouse}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-app_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:?err}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-ecommerce_staging}
+      - SPARK_MASTER=spark://spark-master:7077
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://fakecloud:4566}
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./tests:/app/tests
+      - ./great_expectations:/app/great_expectations
+      - ./scripts:/app/scripts
+    networks:
+      - ecommerce_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      fakecloud:
+        condition: service_healthy
+    command: tail -f /dev/null
+
+  # ==========================================
+  # FAKECLOUD - Local AWS Cloud Emulator
+  # Emulates AWS services (S3, SQS, Lambda, etc.)
+  # on http://localhost:4566
+  # ==========================================
+  fakecloud:
+    build:
+      context: .
+      dockerfile: docker/fakecloud/Dockerfile
+    image: ecommerce_fakecloud_image
+    container_name: ecommerce_fakecloud
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    volumes:
+      - //var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_fakecloud/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==========================================
+  # MOCK API - Simulates order API
+  # ==========================================
+  mock-api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    container_name: ecommerce_mock_api
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-app_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql123}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-ecommerce_staging}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    networks:
+      - ecommerce_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # ==========================================
+  # AIRFLOW - Orchestration
+  # ==========================================
+  airflow:
+    image: apache/airflow:2.8.0-python3.11
+    container_name: ecommerce_airflow
+    restart: unless-stopped
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:postgres123@postgres:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwL68h6O3MU=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=UTC
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root123
+      - MYSQL_DATABASE=ecommerce_staging
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=postgres123
+      - POSTGRES_DB=postgres
+      - PG_SOURCE_HOST=postgres
+      - PG_SOURCE_PORT=5432
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+      - ./scripts:/opt/airflow/scripts
+      - ./great_expectations:/opt/airflow/great_expectations
+      - ./data:/opt/airflow/data # ← ADD THIS LINE
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ecommerce_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      bash -c "
+        pip install --no-cache-dir pandas==2.1.4 sqlalchemy==1.4.54 psycopg2-binary==2.9.9 mysql-connector-python==8.2.0 great-expectations==0.18.15 apache-airflow-providers-apache-spark==4.7.1 apache-airflow-providers-slack==8.5.1 apache-airflow-providers-http==4.9.0 apache-airflow-providers-postgres==5.9.0 &&
+        airflow db upgrade &&
+        airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin || true &&
+        airflow webserver & airflow scheduler
+      "

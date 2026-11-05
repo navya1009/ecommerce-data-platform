@@ -1,0 +1,215 @@
+# .github/workflows/deploy.yml
+# -----------------------------------------------------------------------------
+# Deploy workflow: runs on merge to main.
+# Steps: OIDC auth, ECR build/push, Terraform apply, Ansible deploy, smoke test.
+#
+# REQUIRED REPOSITORY SECRETS:
+#   - AWS_ROLE_ARN        : IAM role ARN for OIDC (no stored AWS keys)
+#   - AWS_REGION          : e.g. us-east-1
+#   - ECR_REPOSITORY      : ECR repo name
+#   - AIRFLOW_BASE_URL    : Airflow webserver URL
+#   - AIRFLOW_USER        : Airflow username
+#   - AIRFLOW_PASSWORD    : Airflow password
+#   - SLACK_WEBHOOK_URL   : Slack webhook for notifications
+# -----------------------------------------------------------------------------
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Only one deploy at a time.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  id-token: write          # required for OIDC
+  contents: read
+  issues: write            # required to open issues on failure
+
+jobs:
+  # ===========================================================================
+  # JOB 1: Build and push Docker image to ECR
+  # ===========================================================================
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          echo "image_tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+  # ===========================================================================
+  # JOB 2: Terraform plan + apply
+  # ===========================================================================
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-and-push
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -var-file="environments/prod.tfvars" -out=tfplan -no-color
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
+
+  # ===========================================================================
+  # JOB 3: Ansible deploy
+  # ===========================================================================
+  ansible-deploy:
+    name: Ansible Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ecommerce-dev.pem
+          chmod 600 ~/.ssh/ecommerce-dev.pem
+
+      - name: Run deploy playbook
+        run: |
+          ansible-playbook \
+            -i ansible/inventory/dev.ini \
+            ansible/playbooks/deploy_pipeline.yml
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ===========================================================================
+  # JOB 4: Post-deploy smoke test (trigger Airflow DAG)
+  # ===========================================================================
+  smoke-test:
+    name: Post-Deploy Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: ansible-deploy
+
+    steps:
+      - name: Trigger Airflow DAG
+        id: trigger
+        run: |
+          DAG_RUN_ID="deploy_$(date +%Y%m%d_%H%M%S)"
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -u "${{ secrets.AIRFLOW_USER }}:${{ secrets.AIRFLOW_PASSWORD }}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"dag_run_id\": \"$DAG_RUN_ID\"}" \
+            "${{ secrets.AIRFLOW_BASE_URL }}/api/v1/dags/ecommerce_daily_pipeline/dagRuns")
+          echo "$RESPONSE"
+          echo "dag_run_id=$DAG_RUN_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for DAG success (timeout 10 minutes)
+        run: |
+          DAG_RUN_ID="${{ steps.trigger.outputs.dag_run_id }}"
+          TIMEOUT=600
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATE=$(curl -s \
+              -u "${{ secrets.AIRFLOW_USER }}:${{ secrets.AIRFLOW_PASSWORD }}" \
+              "${{ secrets.AIRFLOW_BASE_URL }}/api/v1/dags/ecommerce_daily_pipeline/dagRuns/$DAG_RUN_ID" \
+              | python -c "import sys, json; print(json.load(sys.stdin)['state'])")
+            echo "State: $STATE (${ELAPSED}s elapsed)"
+            if [ "$STATE" = "success" ]; then
+              echo "DAG run succeeded"
+              exit 0
+            fi
+            if [ "$STATE" = "failed" ]; then
+              echo "DAG run failed"
+              exit 1
+            fi
+            sleep 10
+            ELAPSED=$((ELAPSED + 10))
+          done
+          echo "Timeout waiting for DAG"
+          exit 1
+
+  # ===========================================================================
+  # JOB 5: Open GitHub Issue on failure
+  # ===========================================================================
+  on-failure:
+    name: Open Issue on Failure
+    runs-on: ubuntu-latest
+    needs: [build-and-push, terraform, ansible-deploy, smoke-test]
+    if: failure()
+    permissions:
+      issues: write
+
+    steps:
+      - name: Create GitHub Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Deploy failed — ${context.sha.substring(0, 7)}`,
+              body: `## Deploy Failure\n\n**Workflow:** ${context.workflow}\n**Run ID:** ${context.runId}\n**SHA:** ${context.sha}\n**Branch:** ${context.ref}\n**Actor:** ${context.actor}\n\n### Logs\nSee [workflow run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              labels: ['deploy-failure', 'bug']
+            });
+            return issue.data.number;

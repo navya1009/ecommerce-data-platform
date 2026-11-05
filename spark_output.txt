@@ -1,0 +1,210 @@
+﻿2026-06-19 18:06:26 - INFO - Starting ETL job with batch-id: test_20260619_233624
+docker : 26/06/19 18:06:26 INFO SparkContext: Running Spark version 3.5.0
+At line:2 char:1
++ docker exec ecommerce_pipeline spark-submit `
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (26/06/19 18:06:...k version 3.5.0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+26/06/19 18:06:26 INFO SparkContext: OS info Linux, 6.6.87.2-microsoft-standard-WSL2, amd64
+26/06/19 18:06:26 INFO SparkContext: Java version 21.0.11
+26/06/19 18:06:26 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java 
+classes where applicable
+26/06/19 18:06:26 INFO ResourceUtils: ==============================================================
+26/06/19 18:06:26 INFO ResourceUtils: No custom resources configured for spark.driver.
+26/06/19 18:06:26 INFO ResourceUtils: ==============================================================
+26/06/19 18:06:26 INFO SparkContext: Submitted application: TransformOrders_test_20260619_233624
+26/06/19 18:06:26 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: 
+cores, amount: 2, script: , vendor: , memory -> name: memory, amount: 2048, script: , vendor: , offHeap -> name: 
+offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+26/06/19 18:06:26 INFO ResourceProfile: Limiting resource is cpus at 2 tasks per executor
+26/06/19 18:06:26 INFO ResourceProfileManager: Added ResourceProfile id: 0
+26/06/19 18:06:26 INFO SecurityManager: Changing view acls to: root
+26/06/19 18:06:26 INFO SecurityManager: Changing modify acls to: root
+26/06/19 18:06:26 INFO SecurityManager: Changing view acls groups to: 
+26/06/19 18:06:26 INFO SecurityManager: Changing modify acls groups to: 
+26/06/19 18:06:26 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view 
+permissions: root; groups with view permissions: EMPTY; users with modify permissions: root; groups with modify 
+permissions: EMPTY
+26/06/19 18:06:26 INFO Utils: Successfully started service 'sparkDriver' on port 41429.
+26/06/19 18:06:26 INFO SparkEnv: Registering MapOutputTracker
+26/06/19 18:06:26 INFO SparkEnv: Registering BlockManagerMaster
+26/06/19 18:06:26 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting 
+topology information
+26/06/19 18:06:26 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+26/06/19 18:06:26 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+26/06/19 18:06:26 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-1a4dcc4c-1179-40e9-a53a-9b751dbf48d5
+26/06/19 18:06:26 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+26/06/19 18:06:26 INFO SparkEnv: Registering OutputCommitCoordinator
+26/06/19 18:06:27 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+26/06/19 18:06:27 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+26/06/19 18:06:27 INFO StandaloneAppClient$ClientEndpoint: Connecting to master spark://spark-master:7077...
+26/06/19 18:06:27 INFO TransportClientFactory: Successfully created connection to spark-master/172.18.0.2:7077 after 
+16 ms (0 ms spent in bootstraps)
+26/06/19 18:06:27 INFO StandaloneSchedulerBackend: Connected to Spark cluster with app ID app-20260619180627-0003
+26/06/19 18:06:27 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20260619180627-0003/0 on 
+worker-20260619175709-172.18.0.4-36815 (172.18.0.4:36815) with 2 core(s)
+26/06/19 18:06:27 INFO StandaloneSchedulerBackend: Granted executor ID app-20260619180627-0003/0 on hostPort 
+172.18.0.4:36815 with 2 core(s), 2.0 GiB RAM
+26/06/19 18:06:27 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20260619180627-0003/1 on 
+worker-20260619175709-172.18.0.5-40789 (172.18.0.5:40789) with 2 core(s)
+26/06/19 18:06:27 INFO StandaloneSchedulerBackend: Granted executor ID app-20260619180627-0003/1 on hostPort 
+172.18.0.5:40789 with 2 core(s), 2.0 GiB RAM
+26/06/19 18:06:27 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' 
+on port 43455.
+26/06/19 18:06:27 INFO NettyBlockTransferService: Server created on 56f7881148d8:43455
+26/06/19 18:06:27 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block 
+replication policy
+26/06/19 18:06:27 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, 56f7881148d8, 43455, None)
+26/06/19 18:06:27 INFO BlockManagerMasterEndpoint: Registering block manager 56f7881148d8:43455 with 434.4 MiB RAM, 
+BlockManagerId(driver, 56f7881148d8, 43455, None)
+26/06/19 18:06:27 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, 56f7881148d8, 43455, None)
+26/06/19 18:06:27 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, 56f7881148d8, 43455, None)
+26/06/19 18:06:27 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20260619180627-0003/1 is now RUNNING
+26/06/19 18:06:27 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20260619180627-0003/0 is now RUNNING
+26/06/19 18:06:27 INFO StandaloneSchedulerBackend: SchedulerBackend is ready for scheduling beginning after reached 
+minRegisteredResourcesRatio: 0.0
+2026-06-19 18:06:27 - INFO - Reading unprocessed orders from MySQL...
+26/06/19 18:06:27 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of 
+spark.sql.warehouse.dir.
+26/06/19 18:06:27 INFO SharedState: Warehouse path is 'file:/app/spark-warehouse'.
+2026-06-19 18:06:28 - ERROR - ETL failed: An error occurred while calling o39.jdbc.
+: java.lang.ClassNotFoundException: com.mysql.cj.jdbc.Driver
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:593)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	at org.apache.spark.sql.execution.datasources.jdbc.DriverRegistry$.register(DriverRegistry.scala:46)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1$adapted(JDBCOptions.scala:103)
+	at scala.Option.foreach(Option.scala:407)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:41)
+	at org.apache.spark.sql.execution.datasources.jdbc.JdbcRelationProvider.createRelation(JdbcRelationProvider.scala:34)
+	at org.apache.spark.sql.execution.datasources.DataSource.resolveRelation(DataSource.scala:346)
+	at org.apache.spark.sql.DataFrameReader.loadV1Source(DataFrameReader.scala:229)
+	at org.apache.spark.sql.DataFrameReader.$anonfun$load$2(DataFrameReader.scala:211)
+	at scala.Option.getOrElse(Option.scala:189)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:211)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:172)
+	at org.apache.spark.sql.DataFrameReader.jdbc(DataFrameReader.scala:249)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:75)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:52)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+	at py4j.Gateway.invoke(Gateway.java:282)
+	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:182)
+	at py4j.ClientServerConnection.run(ClientServerConnection.java:106)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+Traceback (most recent call last):
+  File "/app/src/spark_jobs/transform_orders.py", line 650, in run_etl
+    source_df = read_unprocessed_orders(spark, config, args.max_records)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/src/spark_jobs/transform_orders.py", line 185, in read_unprocessed_orders
+    .jdbc(url=url, table=f"({query}) as orders",
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pyspark/python/lib/pyspark.zip/pyspark/sql/readwriter.py", line 946, in jdbc
+    return self._df(self._jreader.jdbc(url, table, jprop))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pyspark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__
+    return_value = get_return_value(
+                   ^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pyspark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 179, in deco
+    return f(*a, **kw)
+           ^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/pyspark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py", line 326, in get_return_value
+    raise Py4JJavaError(
+py4j.protocol.Py4JJavaError: An error occurred while calling o39.jdbc.
+: java.lang.ClassNotFoundException: com.mysql.cj.jdbc.Driver
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:593)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	at org.apache.spark.sql.execution.datasources.jdbc.DriverRegistry$.register(DriverRegistry.scala:46)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1$adapted(JDBCOptions.scala:103)
+	at scala.Option.foreach(Option.scala:407)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:41)
+	at org.apache.spark.sql.execution.datasources.jdbc.JdbcRelationProvider.createRelation(JdbcRelationProvider.scala:34)
+	at org.apache.spark.sql.execution.datasources.DataSource.resolveRelation(DataSource.scala:346)
+	at org.apache.spark.sql.DataFrameReader.loadV1Source(DataFrameReader.scala:229)
+	at org.apache.spark.sql.DataFrameReader.$anonfun$load$2(DataFrameReader.scala:211)
+	at scala.Option.getOrElse(Option.scala:189)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:211)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:172)
+	at org.apache.spark.sql.DataFrameReader.jdbc(DataFrameReader.scala:249)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:75)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:52)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+	at py4j.Gateway.invoke(Gateway.java:282)
+	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:182)
+	at py4j.ClientServerConnection.run(ClientServerConnection.java:106)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+26/06/19 18:06:28 INFO SparkContext: SparkContext is stopping with exitCode 0.
+26/06/19 18:06:28 INFO SparkUI: Stopped Spark web UI at http://56f7881148d8:4040
+26/06/19 18:06:28 INFO StandaloneSchedulerBackend: Shutting down all executors
+26/06/19 18:06:28 INFO StandaloneSchedulerBackend$StandaloneDriverEndpoint: Asking each executor to shut down
+26/06/19 18:06:28 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/06/19 18:06:28 INFO MemoryStore: MemoryStore cleared
+26/06/19 18:06:28 INFO BlockManager: BlockManager stopped
+26/06/19 18:06:28 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/06/19 18:06:28 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/06/19 18:06:28 INFO SparkContext: Successfully stopped SparkContext
+
+============================================================
+ETL SUMMARY
+============================================================
+Batch ID:       test_20260619_233624
+Rows Read:      0
+Rows Loaded:    0
+Rows Quarantined: 0
+Processing Time: 2.06 seconds
+Status:         failed: An error occurred while calling o39.jdbc.
+: java.lang.ClassNotFoundException: com.mysql.cj.jdbc.Driver
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:593)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:526)
+	at org.apache.spark.sql.execution.datasources.jdbc.DriverRegistry$.register(DriverRegistry.scala:46)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.$anonfun$driverClass$1$adapted(JDBCOptions.scala:103)
+	at scala.Option.foreach(Option.scala:407)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:103)
+	at org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions.<init>(JDBCOptions.scala:41)
+	at org.apache.spark.sql.execution.datasources.jdbc.JdbcRelationProvider.createRelation(JdbcRelationProvider.scala:34)
+	at org.apache.spark.sql.execution.datasources.DataSource.resolveRelation(DataSource.scala:346)
+	at org.apache.spark.sql.DataFrameReader.loadV1Source(DataFrameReader.scala:229)
+	at org.apache.spark.sql.DataFrameReader.$anonfun$load$2(DataFrameReader.scala:211)
+	at scala.Option.getOrElse(Option.scala:189)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:211)
+	at org.apache.spark.sql.DataFrameReader.load(DataFrameReader.scala:172)
+	at org.apache.spark.sql.DataFrameReader.jdbc(DataFrameReader.scala:249)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:75)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:52)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+	at py4j.Gateway.invoke(Gateway.java:282)
+	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:182)
+	at py4j.ClientServerConnection.run(ClientServerConnection.java:106)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+============================================================
+2026-06-19 18:06:29 - INFO - Closing down clientserver connection
+26/06/19 18:06:29 INFO ShutdownHookManager: Shutdown hook called
+26/06/19 18:06:29 INFO ShutdownHookManager: Deleting directory /tmp/spark-f0499388-f60a-4cdd-bb10-a85601b61ee3
+26/06/19 18:06:29 INFO ShutdownHookManager: Deleting directory /tmp/spark-90007ea0-8d77-4249-8763-758276c407df
+26/06/19 18:06:29 INFO ShutdownHookManager: Deleting directory 
+/tmp/spark-90007ea0-8d77-4249-8763-758276c407df/pyspark-5d31d44e-53de-4438-8440-99f5d84b5794

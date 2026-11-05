@@ -1,0 +1,115 @@
+# .github/workflows/backfill.yml
+# -----------------------------------------------------------------------------
+# Manual backfill workflow: triggers Airflow backfill via REST API.
+# Inputs: start_date, end_date, dag_id
+#
+# REQUIRED REPOSITORY SECRETS:
+#   - AIRFLOW_BASE_URL    : Airflow webserver URL
+#   - AIRFLOW_USER        : Airflow username
+#   - AIRFLOW_PASSWORD    : Airflow password
+#   - SLACK_WEBHOOK_URL   : Slack webhook for notifications
+# -----------------------------------------------------------------------------
+
+name: Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        type: string
+        default: "2026-09-01"
+      end_date:
+        description: "End date (YYYY-MM-DD)"
+        required: true
+        type: string
+        default: "2026-09-15"
+      dag_id:
+        description: "Airflow DAG ID"
+        required: true
+        type: string
+        default: "ecommerce_daily_pipeline"
+
+jobs:
+  trigger-backfill:
+    name: Trigger Airflow Backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate inputs
+        run: |
+          if [[ ! "${{ inputs.start_date }}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "Invalid start_date format"
+            exit 1
+          fi
+          if [[ ! "${{ inputs.end_date }}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "Invalid end_date format"
+            exit 1
+          fi
+
+      - name: Send backfill start notification to Slack
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"🔄 *Backfill Started*\\n*DAG:* ${{ inputs.dag_id }}\\n*Range:* ${{ inputs.start_date }} → ${{ inputs.end_date }}\\n*Triggered by:* ${{ github.actor }}\"
+            }"
+
+      - name: Trigger Airflow backfill
+        id: backfill
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -u "${{ secrets.AIRFLOW_USER }}:${{ secrets.AIRFLOW_PASSWORD }}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"start_date\": \"${{ inputs.start_date }}T00:00:00Z\",
+              \"end_date\": \"${{ inputs.end_date }}T23:59:59Z\"
+            }" \
+            "${{ secrets.AIRFLOW_BASE_URL }}/api/v1/dags/${{ inputs.dag_id }}/backfills")
+          echo "$RESPONSE"
+          BATCH_ID=$(echo "$RESPONSE" | python -c "import sys, json; print(json.load(sys.stdin).get('id', 'unknown'))")
+          echo "batch_id=$BATCH_ID" >> $GITHUB_OUTPUT
+
+      - name: Poll backfill status
+        run: |
+          BATCH_ID="${{ steps.backfill.outputs.batch_id }}"
+          TIMEOUT=1800
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(curl -s \
+              -u "${{ secrets.AIRFLOW_USER }}:${{ secrets.AIRFLOW_PASSWORD }}" \
+              "${{ secrets.AIRFLOW_BASE_URL }}/api/v1/dags/${{ inputs.dag_id }}/backfills/$BATCH_ID" \
+              | python -c "import sys, json; print(json.load(sys.stdin).get('status', 'unknown'))")
+            echo "Backfill status: $STATUS (${ELAPSED}s elapsed)"
+            if [ "$STATUS" = "completed" ] || [ "$STATUS" = "success" ]; then
+              exit 0
+            fi
+            if [ "$STATUS" = "failed" ]; then
+              exit 1
+            fi
+            sleep 30
+            ELAPSED=$((ELAPSED + 30))
+          done
+          echo "Timeout waiting for backfill"
+          exit 1
+
+      - name: Send success notification to Slack
+        if: success()
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"✅ *Backfill Complete*\\n*DAG:* ${{ inputs.dag_id }}\\n*Range:* ${{ inputs.start_date }} → ${{ inputs.end_date }}\\n*Batch ID:* ${{ steps.backfill.outputs.batch_id }}\"
+            }"
+
+      - name: Send failure notification to Slack
+        if: failure()
+        run: |
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"❌ *Backfill Failed*\\n*DAG:* ${{ inputs.dag_id }}\\n*Range:* ${{ inputs.start_date }} → ${{ inputs.end_date }}\\n*Run:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"

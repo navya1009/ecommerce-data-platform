@@ -1,0 +1,175 @@
+# ansible/playbooks/deploy_pipeline.yml
+# -----------------------------------------------------------------------------
+# Deploy the latest pipeline code to Airflow and Spark EC2 instances.
+#   1. Sync spark_jobs/ to Spark master
+#   2. Sync dags/ to Airflow EC2
+#   3. Run database migrations in order
+#   4. Notify Slack
+#
+# Usage:
+#   ansible-playbook -i inventory/dev.ini playbooks/deploy_pipeline.yml
+# -----------------------------------------------------------------------------
+
+- name: Deploy ecommerce-data-platform pipeline
+  hosts: all
+  gather_facts: true
+  become: false
+
+  vars:
+    repo_root: "{{ playbook_dir }}/../.."
+    app_dir: /opt/ecommerce-data-platform
+    migrations_dir: "{{ repo_root }}/migrations"
+    remote_migrations_dir: "{{ app_dir }}/migrations"
+
+  tasks:
+    # =========================================================================
+    # DEPLOYMENT STAGE: Spark master
+    # =========================================================================
+    - name: Spark — ensure spark_jobs directory exists
+      ansible.builtin.file:
+        path: "{{ spark_home }}/jobs"
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: "0755"
+      when: "'spark' in group_names"
+
+    - name: Spark — sync spark_jobs/ to Spark master
+      ansible.builtin.synchronize:
+        src: "{{ repo_root }}/src/spark_jobs/"
+        dest: "{{ spark_home }}/jobs/"
+        delete: true
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+      delegate_to: "{{ inventory_hostname }}"
+      when: "'spark' in group_names"
+
+    # =========================================================================
+    # DEPLOYMENT STAGE: Airflow
+    # =========================================================================
+    - name: Airflow — sync dags/ folder
+      ansible.builtin.synchronize:
+        src: "{{ repo_root }}/dags/"
+        dest: "{{ app_dir }}/dags/"
+        delete: true
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+      delegate_to: "{{ inventory_hostname }}"
+      when: "'airflow' in group_names"
+
+    - name: Airflow — sync src/ folder (pipeline code)
+      ansible.builtin.synchronize:
+        src: "{{ repo_root }}/src/"
+        dest: "{{ app_dir }}/src/"
+        delete: true
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+      delegate_to: "{{ inventory_hostname }}"
+      when: "'airflow' in group_names"
+
+    - name: Airflow — sync scripts/ folder
+      ansible.builtin.synchronize:
+        src: "{{ repo_root }}/scripts/"
+        dest: "{{ app_dir }}/scripts/"
+        delete: true
+      delegate_to: "{{ inventory_hostname }}"
+      when: "'airflow' in group_names"
+
+    - name: Airflow — reload DAGs
+      ansible.builtin.shell: |
+        docker exec ecommerce_airflow airflow dags reserialize || true
+      changed_when: true
+      when: "'airflow' in group_names"
+
+    # =========================================================================
+    # DEPLOYMENT STAGE: Database migrations
+    # =========================================================================
+    - name: Migrations — ensure migrations directory exists on Airflow
+      ansible.builtin.file:
+        path: "{{ remote_migrations_dir }}"
+        state: directory
+        mode: "0755"
+      when: "'airflow' in group_names"
+
+    - name: Migrations — sync migrations/ to Airflow EC2
+      ansible.builtin.synchronize:
+        src: "{{ migrations_dir }}/"
+        dest: "{{ remote_migrations_dir }}/"
+        delete: false
+      delegate_to: "{{ inventory_hostname }}"
+      when: "'airflow' in group_names"
+
+    - name: Migrations — list SQL files in order
+      ansible.builtin.find:
+        paths: "{{ remote_migrations_dir }}"
+        patterns: "*.sql"
+        recurse: true
+      register: migration_files
+      when: "'airflow' in group_names"
+
+    - name: Migrations — run each SQL file in order (Postgres warehouse)
+      ansible.builtin.shell: |
+        docker exec -i ecommerce_postgres \
+          psql -U admin -d postgres \
+          < "{{ item.path }}"
+      loop: "{{ migration_files.files | sort(attribute='path') }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: migration_results
+      changed_when: migration_results.rc == 0
+      when:
+        - "'airflow' in group_names"
+        - item.path is search('migrations/postgres') or item.path is search('/postgres/')
+
+    - name: Migrations — run each SQL file in order (MySQL staging)
+      ansible.builtin.shell: |
+        docker exec -i ecommerce_mysql \
+          mysql -u root -proot123 ecommerce_staging \
+          < "{{ item.path }}"
+      loop: "{{ migration_files.files | sort(attribute='path') }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: migration_results_mysql
+      changed_when: migration_results_mysql.rc == 0
+      when:
+        - "'airflow' in group_names"
+        - item.path is search('migrations/mysql') or item.path is search('/mysql/')
+
+    # =========================================================================
+    # NOTIFICATION STAGE: Slack
+    # =========================================================================
+    - name: Notify — send deployment summary to Slack
+      ansible.builtin.uri:
+        url: "{{ slack_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          text: |
+            :rocket: *Deployment Complete* — `{{ project_name }}-{{ environment }}`
+            *Hosts:* {{ groups['all'] | join(', ') }}
+            *Migrations applied:* {{ (migration_files.files | default([])) | length }}
+            *Status:* :white_check_mark: success
+            *Timestamp:* {{ ansible_date_time.iso8601 }}
+        status_code: 200
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: slack_webhook_url is defined and slack_webhook_url != ""
+
+    # =========================================================================
+    # POST-DEPLOYMENT: Verification
+    # =========================================================================
+    - name: Verify — Airflow DAG list
+      ansible.builtin.shell: |
+        docker exec ecommerce_airflow airflow dags list 2>/dev/null | head -20
+      register: dag_list
+      changed_when: false
+      when: "'airflow' in group_names"
+
+    - name: Verify — display loaded DAGs
+      ansible.builtin.debug:
+        msg: "{{ dag_list.stdout_lines }}"
+      when: "'airflow' in group_names"

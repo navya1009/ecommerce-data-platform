@@ -1,0 +1,61 @@
+# tests/docker-compose.test.yml
+# -----------------------------------------------------------------------------
+# Isolated Docker Compose stack for integration tests.
+# Non-standard host ports (Postgres 5433, MySQL 3307) so it never touches the
+# dev stack on 5432/3306. Migrations are mounted one file at a time: several
+# files in migrations/ are empty placeholders or target a different schema
+# name, and would break container init if mounted as a whole directory.
+# Usage: docker compose -f tests/docker-compose.test.yml up -d
+# -----------------------------------------------------------------------------
+
+name: ecommerce_test
+
+services:
+  test-postgres:
+    image: postgres:15
+    container_name: ecommerce_test_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../migrations/postgres/001_create_warehouse_schema.sql:/docker-entrypoint-initdb.d/01_warehouse_schema.sql:ro
+      # Test-only copy of 002 with CREATE INDEX IF NOT EXISTS (see file header).
+      - ./integration/sql/postgres_analytics_test.sql:/docker-entrypoint-initdb.d/02_analytics_tables.sql:ro
+      - ../migrations/postgres/004_fact_orders_transform_columns.sql:/docker-entrypoint-initdb.d/03_fact_orders_transform_columns.sql:ro
+      - ../migrations/postgres/005_create_pipeline_metrics.sql:/docker-entrypoint-initdb.d/04_pipeline_metrics.sql:ro
+      - ../migrations/postgres/006_create_pipeline_lineage.sql:/docker-entrypoint-initdb.d/05_pipeline_lineage.sql:ro
+      - ../migrations/postgres/007_fix_fact_clickstream_schema.sql:/docker-entrypoint-initdb.d/06_fix_fact_clickstream_schema.sql:ro
+      - ../migrations/postgres/008_correct_segment_comment.sql:/docker-entrypoint-initdb.d/07_correct_segment_comment.sql:ro
+      - ../migrations/postgres/009_fix_inventory_product_id_type.sql:/docker-entrypoint-initdb.d/08_fix_inventory_product_id_type.sql:ro
+    healthcheck:
+      # TCP (127.0.0.1), not the default Unix socket: the init-time temp server
+      # listens on the socket only, which would report healthy too early.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U admin -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  test-mysql:
+    image: mysql:8.0
+    container_name: ecommerce_test_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: ecommerce_staging
+    ports:
+      - "3307:3306"
+    volumes:
+      - ../migrations/mysql/001_create_staging_schema_v3.sql:/docker-entrypoint-initdb.d/01_staging_schema.sql:ro
+      - ../migrations/mysql/002_create_control_tables.sql:/docker-entrypoint-initdb.d/02_control_tables.sql:ro
+      - ../migrations/mysql/003_create_dim_users.sql:/docker-entrypoint-initdb.d/03_dim_users.sql:ro
+      - ./integration/sql/mysql_test_patch.sql:/docker-entrypoint-initdb.d/04_test_patch.sql:ro
+      - ../migrations/mysql/004_fix_watermark_precision.sql:/docker-entrypoint-initdb.d/05_fix_watermark_precision.sql:ro
+    healthcheck:
+      # TCP (127.0.0.1), not the Unix socket: the init-time temp server listens
+      # on the socket only, which would report healthy before the port is open.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--protocol=tcp", "-uroot", "-proot123"]
+      interval: 3s
+      timeout: 3s
+      retries: 40

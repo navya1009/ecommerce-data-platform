@@ -1,21 +1,16 @@
 repos:
-  # Black formatter - makes code look consistent
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 24.1.0
     hooks:
       - id: black
-        language_version: python3
 
-  # Flake8 linter - finds style errors
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.0
+    hooks:
+      - id: isort
+
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
     hooks:
       - id: flake8
-        args: [--max-line-length=88, --extend-ignore=E203]
-
-  # isort - sorts import statements
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
+        args: ["--max-line-length=120"]

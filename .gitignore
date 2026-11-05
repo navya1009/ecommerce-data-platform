@@ -51,6 +51,25 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
 
 # Docker files (these are generated, not source)
 .dockerignore
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+tfplan
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Project reports (local write-ups, not part of the repository)
+Reports/

@@ -1,0 +1,7 @@
+{
+  "dag_run_id": "manual_test_001",
+  "conf": {
+    "test": true,
+    "source": "manual"
+  }
+}

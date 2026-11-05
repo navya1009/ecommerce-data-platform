@@ -1,0 +1,11 @@
+pytest==8.0.0
+pytest-cov==4.1.0
+pytest-timeout==2.2.0
+black==24.1.0
+flake8==7.0.0
+isort==5.13.0
+pre-commit==3.6.0
+ansible==9.1.0
+pyspark==3.5.0
+psycopg[binary]==3.3.6
+

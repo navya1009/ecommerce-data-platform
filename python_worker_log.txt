@@ -1,0 +1,14 @@
+ARGS: ['C:\\Users\\navya\\Desktop\\ecommerce-data-platform\\python_wrapper.py', '-m', 'pyspark.worker']
+PYSPARK_FILE: C:\Users\navya\Desktop\ecommerce-data-platform\venv\Lib\site-packages\pyspark\__init__.py
+STDOUT:
+
+STDERR:
+
+EXIT CODE: 0
+ARGS: ['C:\\Users\\navya\\Desktop\\ecommerce-data-platform\\python_wrapper.py', '-m', 'pyspark.worker']
+PYSPARK_FILE: C:\Users\navya\Desktop\ecommerce-data-platform\venv\Lib\site-packages\pyspark\__init__.py
+STDOUT:
+
+STDERR:
+
+EXIT CODE: 0
