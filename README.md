@@ -2,7 +2,7 @@
 
 ## 1. Project summary
 
-An end-to-end batch analytics pipeline that ingests e-commerce data from CSV files, a mock REST API and PostgreSQL CDC, transforms it with PySpark into a PostgreSQL star schema, validates it with Great Expectations, and orchestrates it daily through Airflow. It handles 210,263 order line items (100,000 orders), 500,000 clickstream events, 10,000 users and 2,000 products, about 710K records per full reload. The warehouse is defined in Terraform for AWS, and the local stack runs as Docker Compose. The integration suite runs against real PostgreSQL and MySQL containers: 23 tests, 22 passing and one skipped for an environment reason (Great Expectations does not import on the Python 3.12 venv).
+An end-to-end batch analytics pipeline that ingests e-commerce data from CSV files, a mock REST API and a PostgreSQL source (watermark-based incremental polling on `updated_at`, not log-based CDC), transforms it with PySpark into a PostgreSQL star schema, and orchestrates it daily through Airflow. Great Expectations suites are defined for data validation. It handles 210,263 order line items (100,000 orders), 500,000 clickstream events, 10,000 users and 2,000 products, about 710K records per full reload. The warehouse is defined in Terraform for AWS, and the local stack runs as Docker Compose with fakecloud emulating AWS. The Terraform AWS provider is currently configured for that local emulator (`localhost:4566`, dummy credentials), so deploying to real AWS needs that changed first (see the runbook). The integration suite runs against real PostgreSQL and MySQL containers: 23 tests, 22 passing and one skipped for an environment reason (Great Expectations does not import on the Python 3.12 venv), as recorded in the last full run.
 
 ## 2. Architecture
 
@@ -10,7 +10,7 @@ An end-to-end batch analytics pipeline that ingests e-commerce data from CSV fil
 flowchart LR
     CSV[CSV files] --> EXT
     API[Mock REST API] --> EXT
-    CDC[PostgreSQL CDC] --> EXT
+    CDC[PostgreSQL source<br/>watermark polling] --> EXT
     EXT[Python extract<br/>src/extract] --> STG[(MySQL 8.0<br/>staging)]
     STG --> SPK[PySpark jobs<br/>src/spark_jobs]
     SPK --> WH[(PostgreSQL 15<br/>star schema)]
@@ -49,7 +49,7 @@ A fuller data-flow description is in [`docs/architecture/data_flow_diagram.md`](
 
 **4.3 Star schema over one wide table.** Dimensions (`dim_users`, `dim_products`, `dim_date`) are shared by facts and by aggregates, so a change to a segment name happens once. Facts are additive (quantity, revenue), so aggregates can be recomputed from them. *Alternative:* one denormalised table per question. That is faster for a single dashboard, but every new question copies data, and corrections have to be applied in several places.
 
-**4.4 Incremental watermarks over full reloads.** Each source has a watermark (`watermarks.last_extracted_at`), and ingestion reads only rows newer than it. That keeps daily cost and latency proportional to new data. The correctness detail mattered: a second-precision watermark re-read boundary rows, so the column is `datetime(6)` (Phase 8.2). *Alternative:* full reloads. They are simpler and self-correcting, but they cost more with every row added, and they rewrite data that did not change.
+**4.4 Incremental watermarks over full reloads.** Each source has a watermark (`watermarks.last_extracted_at`), and ingestion reads only rows newer than it. That keeps daily cost and latency proportional to new data. The correctness detail mattered: a second-precision watermark re-read boundary rows, so the column is `datetime(6)` (Phase 8.2). *Alternative:* full reloads. They are simpler and self-correcting, but they cost more with every row added, and they rewrite data that did not change. *Trade-off:* polling on `updated_at` only sees the latest state of a row, so hard deletes and intermediate changes between two runs are missed, and it relies on the source keeping `updated_at` reliable. Log-based CDC (for example Debezium) would capture those cases.
 
 **4.5 fakecloud for local AWS emulation.** The pipeline calls S3, Lambda and CloudWatch Logs, and developers need those on a laptop with no AWS account. fakecloud is what the project uses and it covers the calls the code makes. *Alternatives:* LocalStack (widely used, and its editions and licensing have changed over time, so check the current terms before relying on it) and calling AWS directly from a dev account (costs money and needs credentials on every laptop). The trade-off is that fakecloud is less widely known, so the team has to maintain its setup.
 
@@ -91,7 +91,7 @@ Then open **http://localhost:8080** (Airflow; default login `admin` / `admin` un
 ## 6. Running the tests
 
 ```bash
-make test-unit          # fast tests, no Docker, no AWS (46 passed, 19 skipped)
+make test-unit          # fast tests, no Docker, no AWS (52 passed, 18 skipped)
 make test-integration   # starts isolated Postgres (5433) and MySQL (3307) containers
 make test-all           # both
 make coverage           # unit tests with an HTML report in htmlcov/
@@ -99,11 +99,13 @@ make coverage           # unit tests with an HTML report in htmlcov/
 
 The integration suite never uses the dev ports (5432, 3306). Its containers are torn down at the end of each run.
 
-**Known gap: test coverage is about 19%** against the 80% target in the project checklist. The unit tests cover the observability and ingestion paths; much of the Spark job code is exercised only by the integration suite, and coverage tooling does not measure it. Raising coverage is deferred.
+**Known gap: unit-test coverage is about 43%** (measured; an earlier version of this README said 19%), against the 80% threshold the CI workflow enforces, so the coverage step fails as configured. All 18 skipped unit tests are stubs for functions that do not exist yet, including the whole Spark transform test group, so the Spark transforms have no unit tests. They are exercised only by the integration suite, and coverage tooling does not measure that. Raising coverage is deferred.
 
 ## 7. Deploying to AWS
 
 Follow [`deployment/RUNBOOK.md`](deployment/RUNBOOK.md). It covers the Terraform state backend, provisioning, database migrations, Airflow connections, the first run, verification, and rollback. The runbook lists the known blockers before a production deployment.
+
+**Status:** the pipeline has been run on the local Docker Compose stack only. The Terraform AWS provider is configured for the local emulator, so it has to be pointed at a real account (with real credentials) before the Terraform can provision anything.
 
 ## 8. Data model
 
@@ -165,18 +167,20 @@ erDiagram
 | Orders ETL runtime | 39 s for 210K line items | Phase 3 measurement |
 | Clickstream ETL runtime | not yet measured at 500K events (34.8 s was measured for 499 events, mostly Spark startup) | Phase 10.1 extension |
 | Daily DAG schedule | 01:00 UTC (`0 1 * * *`) | `dags/airflow_config.py` |
+| Retry policy | 3 retries, exponential backoff from 5 to 30 minutes | DAG default args |
+| Enforced SLA | 30 minutes, on the API ingest task only | DAG task config |
 | Order line items | 210,263 | development database |
 | Clickstream events | 500,000 | development database |
 | Data freshness target | under 60 minutes | **target, not enforced by code yet** |
 | Quarantine rate target | under 0.5% | **target, not enforced by code yet** |
 
-Each job writes a row to `warehouse.pipeline_metrics` and lineage edges to `warehouse.pipeline_lineage`. The CloudWatch dashboard definition is in `monitoring/`.
+The 210,263 and 500,000 figures are dataset sizes loaded in development, not measured daily volumes. Each job writes a row to `warehouse.pipeline_metrics` and lineage edges to `warehouse.pipeline_lineage`. The CloudWatch dashboard definition is in `monitoring/`.
 
 ## 10. Folder structure
 
 ```
 ├── analytics/queries/     # Read-only BI queries: revenue, funnel, inventory, customer
-├── dags/                  # Airflow DAG definitions and self-healing callbacks
+├── dags/                  # Airflow DAG definition and callbacks (tasks/self_healing.py is written but not wired in)
 ├── data/                  # Raw and processed CSV files (not yet listed in .gitignore)
 ├── deployment/            # Production runbook
 ├── docker/                # One Dockerfile directory per service: airflow, api, fakecloud, mysql, postgres, spark
@@ -189,18 +193,27 @@ Each job writes a row to `warehouse.pipeline_metrics` and lineage edges to `ware
 ├── scripts/               # Bootstrap, data generation, Airflow connection setup
 ├── src/
 │   ├── api/               # FastAPI mock server
-│   ├── extract/           # Ingestion: CSV, API, Postgres CDC, Kafka
+│   ├── extract/           # Ingestion: CSV, API, PostgreSQL watermark polling (ingest_kafka.py exists but no DAG task calls it)
 │   ├── spark_jobs/        # PySpark transforms: orders, clickstream, aggregates
-│   ├── transform/         # Other transform code (not used by the DAG; not reviewed here)
+│   ├── transform/         # Empty placeholder files; not used by the DAG
 │   └── utils/             # Logging, metrics, lineage, warehouse connection helpers
-├── terraform/             # Deployed Terraform root and modules, with prod and dev environments
+├── terraform/             # Terraform root and modules with prod and dev environments (AWS provider currently set to the local emulator)
 └── tests/
     ├── unit/              # Fast tests, no external services
     └── integration/       # Real Postgres and MySQL containers, end-to-end jobs
 ```
 
-## 11. License and acknowledgements
+## 11. Known limitations
 
-No license file has been chosen yet. Choose one before publishing the repository; this README does not decide it.
+- **Kafka is not part of the DAG.** The consumer script exists, but no Airflow task calls it, so clickstream data currently arrives through CSV ingestion.
+- **Self-healing is not wired in.** `dags/tasks/self_healing.py` is not imported anywhere. Failure recovery today is Airflow retries only.
+- **Missing manifest script.** The DAG's manifest step calls `scripts/update_pipeline_manifest.py`, which does not exist yet.
+- **Empty placeholder files.** `api_extractor.py`, `postgres_cdc.py`, `kafka_consumer.py`, the `load/` and `transform/` modules, and `dags/extract_dag.py`, `dags/transform_dag.py` and `dags/load_dag.py` contain no code. The working logic lives in the files listed in the architecture diagram.
+- **Hardcoded credentials.** `great_expectations.yml`, `docker-compose.yml` and the `scripts/fix_*.py` helpers contain credentials, which the `.env` setup in section 5 does not cover. The "no hardcoded credentials" unit test scans only `src/`. These are development defaults and must be replaced before any real deployment.
+- **Great Expectations coverage.** The GE integration test is skipped on the Python 3.12 venv, so the checkpoint is not exercised by the integration suite.
+- **Integration results.** The 22 passing and 1 skipped figure is from the last full run and was not re-run in the most recent review.
+- **Unenforced targets.** The freshness and quarantine-rate targets in section 9 are goals, not checks.
+
+## 12. Acknowledgements
 
 Acknowledgements: built with Apache Airflow, Apache Spark, Great Expectations, Terraform, pytest and fakecloud.
