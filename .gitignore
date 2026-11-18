@@ -73,3 +73,13 @@ terraform.rc
 
 # Project reports (local write-ups, not part of the repository)
 Reports/
+
+# Generated pipeline data (keep sample data and placeholders tracked)
+data/*
+!data/*/
+!data/**/.gitkeep
+!data/sample/
+!data/sample/**
+
+# Template is meant to be committed
+!.env.example
